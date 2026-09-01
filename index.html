@@ -199,6 +199,74 @@
     letter-spacing: 0.5px;
   }
   .offline-pill.show { display: inline-block; }
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin: 26px 0 10px 4px;
+  }
+  .segmented {
+    display: flex;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 16px;
+  }
+  .segmented button {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 9px 6px;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+  .segmented button.active {
+    background: var(--accent);
+    color: #fff;
+  }
+  .fee-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    color: var(--text-dim);
+    padding: 7px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+  .fee-row:last-of-type { border-bottom: none; }
+  .fee-row span:last-child { color: var(--text); font-weight: 600; }
+  .bank-result {
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-radius: 18px;
+    padding: 20px;
+    text-align: center;
+    margin-top: 14px;
+  }
+  .bank-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .bank-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .bank-sub {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 6px;
+  }
   footer {
     margin-top: auto;
     padding-top: 24px;
@@ -255,6 +323,27 @@
     <button class="refresh-btn" id="refreshBtn">↻ Refresh</button>
   </div>
 
+  <div class="section-title">Money In The Bank</div>
+  <div class="card">
+    <span class="field-label">Sale Price (<span id="bankCurrencyLabel">USD</span>)</span>
+    <input type="number" id="bankInput" inputmode="decimal" placeholder="0.00" value="2.00">
+
+    <div class="segmented" style="margin-top:14px;">
+      <button id="segDirect" class="active">Direct Sale</button>
+      <button id="segDiscover">Discover</button>
+    </div>
+
+    <div class="fee-row"><span id="gumroadFeeLabel">Gumroad fee (10% + 0.50)</span><span id="gumroadFeeValue">0.00</span></div>
+    <div class="fee-row" id="processingRow"><span>Card processing (2.9% + 0.30)</span><span id="processingFeeValue">0.00</span></div>
+    <div class="fee-row"><span>Total fees</span><span id="totalFeeValue">0.00</span></div>
+
+    <div class="bank-result">
+      <div class="bank-label">You Keep</div>
+      <div class="bank-value" id="bankValue">$0.00</div>
+      <div class="bank-sub" id="bankZarValue">R0.00 landed in your account</div>
+    </div>
+  </div>
+
   <footer>Rate data cached for offline use · <span>Vuja Tsoaela</span></footer>
 </div>
 
@@ -290,7 +379,8 @@ var state = {
   currency: "USD",
   direction: "toZAR",
   rates: null,
-  lastUpdated: null
+  lastUpdated: null,
+  saleType: "direct"
 };
 
 var els = {
@@ -307,7 +397,18 @@ var els = {
   offlinePill: document.getElementById("offlinePill"),
   refreshBtn: document.getElementById("refreshBtn"),
   swapBtn: document.getElementById("swapBtn"),
-  themeToggle: document.getElementById("themeToggle")
+  themeToggle: document.getElementById("themeToggle"),
+  bankInput: document.getElementById("bankInput"),
+  bankCurrencyLabel: document.getElementById("bankCurrencyLabel"),
+  segDirect: document.getElementById("segDirect"),
+  segDiscover: document.getElementById("segDiscover"),
+  gumroadFeeLabel: document.getElementById("gumroadFeeLabel"),
+  gumroadFeeValue: document.getElementById("gumroadFeeValue"),
+  processingRow: document.getElementById("processingRow"),
+  processingFeeValue: document.getElementById("processingFeeValue"),
+  totalFeeValue: document.getElementById("totalFeeValue"),
+  bankValue: document.getElementById("bankValue"),
+  bankZarValue: document.getElementById("bankZarValue")
 };
 
 function loadTheme() {
@@ -369,6 +470,7 @@ function fetchRates(showLoading) {
         state.lastUpdated = payload.timestamp;
         setOffline(false);
         render();
+        renderBank();
       } else {
         throw new Error("bad payload");
       }
@@ -376,6 +478,7 @@ function fetchRates(showLoading) {
     .catch(function () {
       setOffline(true);
       render();
+      renderBank();
     })
     .finally(function () {
       els.refreshBtn.classList.remove("loading");
@@ -427,9 +530,63 @@ function render() {
   els.toInput.value = toVal ? toVal.toFixed(2) : "";
 }
 
+var SYMBOLS = { USD: "$", GBP: "\u00a3", EUR: "\u20ac" };
+
+function renderBank() {
+  var code = state.currency;
+  var symbol = SYMBOLS[code] || "$";
+  els.bankCurrencyLabel.textContent = code;
+
+  var gross = parseFloat(els.bankInput.value);
+  if (isNaN(gross) || gross < 0) gross = 0;
+
+  var gumroadFee, processingFee, totalFee, net;
+
+  if (state.saleType === "direct") {
+    gumroadFee = gross * 0.10 + 0.50;
+    processingFee = gross * 0.029 + 0.30;
+    totalFee = gumroadFee + processingFee;
+    net = gross - totalFee;
+    els.gumroadFeeLabel.textContent = "Gumroad fee (10% + 0.50)";
+    els.processingRow.style.display = "flex";
+    els.processingFeeValue.textContent = symbol + processingFee.toFixed(2);
+  } else {
+    gumroadFee = gross * 0.30;
+    totalFee = gumroadFee;
+    net = gross - totalFee;
+    els.gumroadFeeLabel.textContent = "Discover fee (30%, processing included)";
+    els.processingRow.style.display = "none";
+  }
+  if (net < 0) net = 0;
+
+  els.gumroadFeeValue.textContent = symbol + gumroadFee.toFixed(2);
+  els.totalFeeValue.textContent = symbol + totalFee.toFixed(2);
+  els.bankValue.textContent = symbol + net.toFixed(2);
+
+  var rate = rateToZAR(code);
+  if (rate == null) {
+    els.bankZarValue.textContent = "Rate unavailable, connect once to fetch";
+  } else {
+    var netZar = net * rate;
+    els.bankZarValue.textContent = "R" + netZar.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " landed in your account";
+  }
+}
+
+function setSaleType(type) {
+  state.saleType = type;
+  els.segDirect.classList.toggle("active", type === "direct");
+  els.segDiscover.classList.toggle("active", type === "discover");
+  renderBank();
+}
+
+els.bankInput.addEventListener("input", renderBank);
+els.segDirect.addEventListener("click", function () { setSaleType("direct"); });
+els.segDiscover.addEventListener("click", function () { setSaleType("discover"); });
+
 els.currencySelect.addEventListener("change", function () {
   state.currency = this.value;
   render();
+  renderBank();
 });
 els.fromInput.addEventListener("input", render);
 els.swapBtn.addEventListener("click", function () {
@@ -453,6 +610,7 @@ window.addEventListener("offline", function () { setOffline(true); });
   }
   setOffline(!navigator.onLine);
   render();
+  renderBank();
   if (navigator.onLine) fetchRates(false);
 })();
 </script>
